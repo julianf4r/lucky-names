@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      lucky-canvas:
-        specifier: ^1.7.27
-        version: 1.7.27
       vue:
         specifier: ^3.5.25
         version: 3.5.25(typescript@5.9.3)
@@ -728,9 +725,6 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
-
-  lucky-canvas@1.7.27:
-    resolution: {integrity: sha512-Ftz6qD+863bI7xijBmZg3dw3cNEc7odPr70EZQcGA14y3TgTAzH65HPosOCd6kKUlMwhntBaHMx3onoj9MtJRQ==}
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1631,8 +1625,6 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
-
-  lucky-canvas@1.7.27: {}
 
   magic-string@0.30.21:
     dependencies:

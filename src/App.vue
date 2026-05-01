@@ -1,22 +1,39 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, reactive } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue';
 import LuckyWheel from './components/LuckyWheel.vue';
 import RightPanel from './components/RightPanel.vue';
 
 interface HistoryEntry {
+    id: string;
     name: string;
     date: number;
 }
+
+const STORAGE_KEYS = {
+    names: 'lucky-names-input',
+    history: 'lucky-names-history',
+    settings: 'lucky-names-settings',
+} as const;
+
+const DEFAULT_WHEEL_SETTINGS = {
+    fontSize: 1.5,
+    textRadius: 0.6,
+    textWidth: 0.8,
+} as const;
+
+const SETTING_RANGES = {
+    fontSize: { min: 0.5, max: 2.0 },
+    textRadius: { min: 0.4, max: 0.8 },
+    textWidth: { min: 0.4, max: 1.0 },
+} as const;
+
+type WheelSettingKey = keyof typeof DEFAULT_WHEEL_SETTINGS;
 
 const namesInput = ref('林舟\n顾澈\n沈野\n陈若松\n苏临舟\n明砚');
 const history = ref<HistoryEntry[]>([]);
 const activeTab = ref<'names' | 'history'>('names');
 
-const wheelSettings = reactive({
-    fontSize: 1.5,
-    textRadius: 0.6,
-    textWidth: 0.8,
-});
+const wheelSettings = reactive<Record<WheelSettingKey, number>>({ ...DEFAULT_WHEEL_SETTINGS });
 
 const isSettingsPanelOpen = ref(false);
 const rightPanelRef = ref<HTMLElement | null>(null);
@@ -45,12 +62,20 @@ watch(isSettingsPanelOpen, (isOpen) => {
     }
 });
 
+onUnmounted(() => {
+    document.removeEventListener('mousedown', handleClickOutside);
+});
+
 const names = computed(() => {
     return namesInput.value.split('\n').filter(name => name.trim() !== '').map(name => name.trim());
 });
 
+const createHistoryId = () => {
+    return `${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+};
+
 const handleWinnerSelected = (winner: string) => {
-    history.value.unshift({ name: winner, date: Date.now() });
+    history.value.unshift({ id: createHistoryId(), name: winner, date: Date.now() });
 };
 
 const clearHistory = () => {
@@ -70,37 +95,90 @@ const formatDate = (timestamp: number) => {
     return `${Y}-${M}-${D} ${h}:${m}:${s}`;
 };
 
-// Load data from localStorage on component mount
+const safeJsonParse = (value: string | null): unknown => {
+    if (!value) return null;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+};
+
+const isFiniteNumber = (value: unknown): value is number => {
+    return typeof value === 'number' && Number.isFinite(value);
+};
+
+const clamp = (value: number, min: number, max: number) => {
+    return Math.min(max, Math.max(min, value));
+};
+
+const normalizeHistory = (value: unknown): HistoryEntry[] => {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((entry) => {
+        if (typeof entry === 'string' && entry.trim() !== '') {
+            return [{
+                id: createHistoryId(),
+                name: entry.trim(),
+                date: Date.now(),
+            }];
+        }
+
+        if (
+            entry &&
+            typeof entry === 'object' &&
+            'name' in entry &&
+            'date' in entry &&
+            typeof entry.name === 'string' &&
+            entry.name.trim() !== '' &&
+            isFiniteNumber(entry.date)
+        ) {
+            return [{
+                id: 'id' in entry && typeof entry.id === 'string' && entry.id !== ''
+                    ? entry.id
+                    : createHistoryId(),
+                name: entry.name.trim(),
+                date: entry.date,
+            }];
+        }
+
+        return [];
+    });
+};
+
+const applySavedSettings = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+
+    const savedSettings = value as Partial<Record<WheelSettingKey, unknown>>;
+    const settingKeys = Object.keys(DEFAULT_WHEEL_SETTINGS) as WheelSettingKey[];
+
+    settingKeys.forEach((key) => {
+        const savedValue = savedSettings[key];
+        if (!isFiniteNumber(savedValue)) return;
+
+        const range = SETTING_RANGES[key];
+        wheelSettings[key] = clamp(savedValue, range.min, range.max);
+    });
+};
+
 onMounted(() => {
-    const savedNames = localStorage.getItem('lucky-names-input');
-    if (savedNames) {
+    const savedNames = localStorage.getItem(STORAGE_KEYS.names);
+    if (savedNames !== null) {
         namesInput.value = savedNames;
     }
-    const savedHistory = localStorage.getItem('lucky-names-history');
-    if (savedHistory) {
-        const parsedHistory = JSON.parse(savedHistory);
-        // Simple migration for old string[] history
-        if (parsedHistory.length > 0 && typeof parsedHistory[0] === 'string') {
-            history.value = parsedHistory.map((name: string) => ({ name, date: Date.now() }));
-        } else {
-            history.value = parsedHistory;
-        }
-    }
-    const savedSettings = localStorage.getItem('lucky-names-settings');
-    if (savedSettings) {
-        Object.assign(wheelSettings, JSON.parse(savedSettings));
-    }
+
+    history.value = normalizeHistory(safeJsonParse(localStorage.getItem(STORAGE_KEYS.history)));
+    applySavedSettings(safeJsonParse(localStorage.getItem(STORAGE_KEYS.settings)));
 });
 
-// Watch for changes and save to localStorage
 watch(namesInput, (newValue) => {
-    localStorage.setItem('lucky-names-input', newValue);
+    localStorage.setItem(STORAGE_KEYS.names, newValue);
 });
 watch(history, (newValue) => {
-    localStorage.setItem('lucky-names-history', JSON.stringify(newValue));
+    localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(newValue));
 }, { deep: true });
 watch(wheelSettings, (newValue) => {
-    localStorage.setItem('lucky-names-settings', JSON.stringify(newValue));
+    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(newValue));
 });
 </script>
 
@@ -121,7 +199,7 @@ watch(wheelSettings, (newValue) => {
                         <button @click="clearHistory" class="clear-btn" v-if="history.length > 0">清空记录</button>
                     </div>
                     <ul v-if="history.length > 0">
-                        <li v-for="(entry, index) in history" :key="index">
+                        <li v-for="entry in history" :key="entry.id">
                             <span class="history-name">{{ entry.name }}</span>
                             <span class="history-date">{{ formatDate(entry.date) }}</span>
                         </li>
@@ -282,7 +360,7 @@ watch(wheelSettings, (newValue) => {
     border-radius: 8px;
     padding: 12px;
     font-size: 15px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
     resize: none;
     box-sizing: border-box;
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -342,7 +420,6 @@ watch(wheelSettings, (newValue) => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    /* Changed from baseline to center for more stable vertical alignment */
     padding: 10px 4px;
     border-bottom: 1px solid var(--border-color);
     font-size: 15px;
@@ -352,13 +429,9 @@ watch(wheelSettings, (newValue) => {
     color: var(--dark-gray);
     font-weight: 500;
     white-space: nowrap;
-    /* Prevent name from wrapping */
     overflow: hidden;
-    /* Hide overflow if name is too long */
     text-overflow: ellipsis;
-    /* Add ellipsis for truncated names */
     max-width: 60%;
-    /* Limit name width to leave space for date */
 }
 
 .history-panel li:first-child .history-name {
@@ -382,5 +455,32 @@ watch(wheelSettings, (newValue) => {
     text-align: center;
     margin-top: 30px;
     font-size: 15px;
+}
+
+@media (max-width: 760px) {
+    #app {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: 36vh;
+        min-height: 220px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .main-content {
+        flex: 1;
+        padding: 24px;
+    }
+
+    .main-content.shifted-left {
+        padding-right: 24px;
+    }
+
+    .right-panel {
+        width: min(280px, 86vw);
+    }
 }
 </style>

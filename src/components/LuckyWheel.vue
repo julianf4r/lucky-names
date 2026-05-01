@@ -18,9 +18,18 @@ const rotation = ref(0);
 const isSpinning = ref(false);
 
 const colors = ['#E66060', '#46B9B0', '#3EA5BC', '#E5C25C', '#8B50A4', '#29B866'];
-const primaryColor = ref('#007bff'); // Default fallback
+const primaryColor = ref('#007bff');
 
 let resizeObserver: ResizeObserver | null = null;
+let animationFrameId: number | null = null;
+let activePrizesSnapshot: string[] | null = null;
+
+const getActivePrizes = () => activePrizesSnapshot ?? props.prizes;
+
+const getCanvasLogicalSize = (canvas: HTMLCanvasElement) => {
+    const size = Math.min(canvas.clientWidth, canvas.clientHeight);
+    return size > 0 ? size : canvas.width / window.devicePixelRatio;
+};
 
 const drawWheel = () => {
     const canvas = canvasRef.value;
@@ -28,10 +37,13 @@ const drawWheel = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const arc = Math.PI * 2 / (props.prizes.length || 1);
-    const radius = canvas.width / 2;
+    const prizes = getActivePrizes();
+    const size = getCanvasLogicalSize(canvas);
+    const arc = Math.PI * 2 / (prizes.length || 1);
+    const radius = size / 2;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    ctx.clearRect(0, 0, size, size);
 
     // Outer border
     ctx.strokeStyle = '#E0E0E0';
@@ -44,7 +56,7 @@ const drawWheel = () => {
     ctx.translate(radius, radius);
     ctx.rotate(rotation.value);
 
-    const prizeCount = props.prizes.length || 1;
+    const prizeCount = prizes.length || 1;
     // Base font size calculation
     const baseFontSizeDivisor = 15 + Math.max(0, prizeCount - 8) * 1.0;
     const baseFontSize = Math.max(12, Math.floor(radius / baseFontSizeDivisor));
@@ -53,7 +65,7 @@ const drawWheel = () => {
     const fontSize = baseFontSize * props.fontSizeMultiplier;
     const textRadius = radius * props.textRadiusFactor;
 
-    props.prizes.forEach((prize, i) => {
+    prizes.forEach((prize, i) => {
         ctx.beginPath();
         ctx.fillStyle = colors[i % colors.length] ?? '#007bff';
         ctx.moveTo(0, 0);
@@ -83,7 +95,7 @@ const drawWheel = () => {
 
     ctx.restore();
 
-    // Center "SPIN" button
+    // Center button
     const centerButtonRadius = radius / 4;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
@@ -94,7 +106,7 @@ const drawWheel = () => {
     ctx.font = `bold ${Math.max(16, radius / 12)}px Inter`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('SPIN', radius, radius);
+    ctx.fillText(prizes.length > 0 ? '开始' : '暂无名单', radius, radius);
 
     // Draw pointer on the right, pointing outwards
     const pointerSize = Math.max(15, radius / 25);
@@ -108,21 +120,39 @@ const drawWheel = () => {
     ctx.fill();
 };
 
-const getRandomInt = (max: number) => {
+const getRandomUint32 = () => {
     const randomBuffer = new Uint32Array(1);
     crypto.getRandomValues(randomBuffer);
-    return (randomBuffer[0] ?? 0) % max;
+    return randomBuffer[0] ?? 0;
+};
+
+const getRandomInt = (max: number) => {
+    const limit = Math.floor(0x100000000 / max) * max;
+    let value = getRandomUint32();
+
+    while (value >= limit) {
+        value = getRandomUint32();
+    }
+
+    return value % max;
+};
+
+const getRandomFloat = () => {
+    return getRandomUint32() / 0x100000000;
 };
 
 const spin = () => {
-    if (isSpinning.value || props.prizes.length === 0) return;
+    const prizesSnapshot = props.prizes.slice();
+    if (isSpinning.value || prizesSnapshot.length === 0) return;
+
+    activePrizesSnapshot = prizesSnapshot;
     isSpinning.value = true;
 
-    const winnerIndex = getRandomInt(props.prizes.length);
+    const winnerIndex = getRandomInt(prizesSnapshot.length);
     const totalRotations = 5;
-    const arc = Math.PI * 2 / props.prizes.length;
+    const arc = Math.PI * 2 / prizesSnapshot.length;
     // Align winner to the right side (angle 0)
-    const targetRotation = (totalRotations * Math.PI * 2) - (winnerIndex * arc) + (Math.random() * arc * 0.8 - arc * 0.4);
+    const targetRotation = (totalRotations * Math.PI * 2) - (winnerIndex * arc) + (getRandomFloat() * arc * 0.8 - arc * 0.4);
 
     let start: number | null = null;
     const duration = 5000; // 5 seconds
@@ -138,16 +168,18 @@ const spin = () => {
         drawWheel();
 
         if (progress < duration) {
-            requestAnimationFrame(animate);
+            animationFrameId = requestAnimationFrame(animate);
         } else {
             rotation.value = targetRotation % (Math.PI * 2);
             drawWheel();
             isSpinning.value = false;
-            emit('winner-selected', props.prizes[winnerIndex] ?? '');
+            emit('winner-selected', prizesSnapshot[winnerIndex] ?? '');
+            activePrizesSnapshot = null;
+            animationFrameId = null;
         }
     };
 
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
 };
 
 const resizeCanvas = () => {
@@ -155,14 +187,17 @@ const resizeCanvas = () => {
     const canvas = canvasRef.value;
     if (container && canvas) {
         const size = Math.min(container.clientWidth, container.clientHeight);
-        canvas.width = size;
-        canvas.height = size;
+        const dpr = window.devicePixelRatio || 1;
+
+        canvas.style.width = `${size}px`;
+        canvas.style.height = `${size}px`;
+        canvas.width = Math.floor(size * dpr);
+        canvas.height = Math.floor(size * dpr);
         drawWheel();
     }
 };
 
 onMounted(() => {
-    // Use CSS variables from root for consistency
     const rootStyle = getComputedStyle(document.documentElement);
     primaryColor.value = rootStyle.getPropertyValue('--primary-color').trim() || '#007bff';
 
@@ -174,9 +209,11 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    if (resizeObserver && wheelContainerRef.value) {
-        resizeObserver.unobserve(wheelContainerRef.value);
+    if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
     }
+
+    resizeObserver?.disconnect();
 });
 
 watch(() => props.prizes, () => {
@@ -199,7 +236,7 @@ watch(
 
 <template>
     <div ref="wheelContainerRef" class="wheel-container">
-        <canvas ref="canvasRef" @click="spin"></canvas>
+        <canvas ref="canvasRef" :class="{ 'is-empty': prizes.length === 0 }" @click="spin"></canvas>
     </div>
 </template>
 
@@ -215,7 +252,10 @@ watch(
 canvas {
     cursor: pointer;
     border-radius: 50%;
-    /* A more subtle shadow */
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.07);
+}
+
+canvas.is-empty {
+    cursor: default;
 }
 </style>
