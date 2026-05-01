@@ -36,6 +36,8 @@ const activeTab = ref<'names' | 'history'>('names');
 const wheelSettings = reactive<Record<WheelSettingKey, number>>({ ...DEFAULT_WHEEL_SETTINGS });
 
 const isSettingsPanelOpen = ref(false);
+const selectedWinner = ref('');
+const isWinnerDialogOpen = ref(false);
 const rightPanelRef = ref<HTMLElement | null>(null);
 const settingsBtnRef = ref<HTMLElement | null>(null);
 
@@ -76,6 +78,12 @@ const createHistoryId = () => {
 
 const handleWinnerSelected = (winner: string) => {
     history.value.unshift({ id: createHistoryId(), name: winner, date: Date.now() });
+    selectedWinner.value = winner;
+    isWinnerDialogOpen.value = true;
+};
+
+const closeWinnerDialog = () => {
+    isWinnerDialogOpen.value = false;
 };
 
 const clearHistory = () => {
@@ -225,6 +233,18 @@ watch(wheelSettings, (newValue) => {
             <div v-if="isSettingsPanelOpen" class="right-panel" ref="rightPanelRef">
                 <RightPanel v-model:font-size="wheelSettings.fontSize" v-model:text-radius="wheelSettings.textRadius"
                     v-model:text-width="wheelSettings.textWidth" />
+            </div>
+        </Transition>
+        <Transition name="winner-fade">
+            <div v-if="isWinnerDialogOpen" class="winner-overlay" @click.self="closeWinnerDialog">
+                <div class="fireworks">
+                    <span v-for="index in 18" :key="index" class="spark" :style="{ '--i': index }"></span>
+                </div>
+                <div class="winner-dialog">
+                    <p class="winner-kicker">恭喜中奖</p>
+                    <h2>{{ selectedWinner }}</h2>
+                    <button class="winner-close-btn" @click="closeWinnerDialog">知道了</button>
+                </div>
             </div>
         </Transition>
     </div>
@@ -455,6 +475,127 @@ watch(wheelSettings, (newValue) => {
     text-align: center;
     margin-top: 30px;
     font-size: 15px;
+}
+
+.winner-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(17, 24, 39, 0.42);
+    backdrop-filter: blur(3px);
+    box-sizing: border-box;
+}
+
+.winner-dialog {
+    position: relative;
+    width: min(420px, 100%);
+    padding: 34px 32px 28px;
+    border-radius: 8px;
+    background: #ffffff;
+    text-align: center;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    animation: winner-pop 0.32s cubic-bezier(0.2, 0.9, 0.2, 1.08);
+}
+
+.winner-kicker {
+    margin: 0 0 10px;
+    color: var(--dark-gray);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.winner-dialog h2 {
+    margin: 0;
+    color: var(--primary-color);
+    font-size: clamp(34px, 7vw, 52px);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+.winner-close-btn {
+    margin-top: 26px;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 26px;
+    background: var(--primary-color);
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.winner-close-btn:hover {
+    background: var(--primary-color-dark);
+    transform: translateY(-1px);
+}
+
+.fireworks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.spark {
+    --x: calc(((var(--i) * 47) % 100) * 1%);
+    --y: calc((18 + ((var(--i) * 31) % 54)) * 1%);
+    --angle: calc(var(--i) * 20deg);
+    --distance: calc(42px + ((var(--i) % 5) * 14px));
+    --delay: calc((var(--i) % 6) * 0.08s);
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: hsl(calc(var(--i) * 36), 82%, 58%);
+    box-shadow:
+        0 0 0 4px rgba(255, 255, 255, 0.18),
+        0 0 18px currentColor;
+    animation: spark-burst 1.05s ease-out var(--delay) both;
+}
+
+.winner-fade-enter-active,
+.winner-fade-leave-active {
+    transition: opacity 0.22s ease;
+}
+
+.winner-fade-enter-from,
+.winner-fade-leave-to {
+    opacity: 0;
+}
+
+@keyframes winner-pop {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes spark-burst {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(0) scale(0.4);
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(var(--distance)) scale(0.95);
+    }
 }
 
 @media (max-width: 760px) {
