@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue';
+import confetti from 'canvas-confetti';
 import LuckyWheel from './components/LuckyWheel.vue';
 import RightPanel from './components/RightPanel.vue';
 
@@ -76,10 +77,56 @@ const createHistoryId = () => {
     return `${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 };
 
+const launchConfetti = () => {
+    const defaults = {
+        zIndex: 300,
+        disableForReducedMotion: true,
+        colors: ['#E66060', '#46B9B0', '#3EA5BC', '#E5C25C', '#8B50A4', '#29B866', '#007bff'],
+    };
+
+    confetti({
+        ...defaults,
+        particleCount: 120,
+        spread: 80,
+        startVelocity: 45,
+        origin: { x: 0.5, y: 0.48 },
+    });
+
+    confetti({
+        ...defaults,
+        particleCount: 70,
+        angle: 60,
+        spread: 65,
+        startVelocity: 55,
+        origin: { x: 0, y: 0.68 },
+    });
+
+    confetti({
+        ...defaults,
+        particleCount: 70,
+        angle: 120,
+        spread: 65,
+        startVelocity: 55,
+        origin: { x: 1, y: 0.68 },
+    });
+
+    window.setTimeout(() => {
+        confetti({
+            ...defaults,
+            particleCount: 90,
+            spread: 130,
+            startVelocity: 35,
+            scalar: 0.9,
+            origin: { x: 0.5, y: 0.2 },
+        });
+    }, 260);
+};
+
 const handleWinnerSelected = (winner: string) => {
     history.value.unshift({ id: createHistoryId(), name: winner, date: Date.now() });
     selectedWinner.value = winner;
     isWinnerDialogOpen.value = true;
+    requestAnimationFrame(launchConfetti);
 };
 
 const closeWinnerDialog = () => {
@@ -237,9 +284,6 @@ watch(wheelSettings, (newValue) => {
         </Transition>
         <Transition name="winner-fade">
             <div v-if="isWinnerDialogOpen" class="winner-overlay" @click.self="closeWinnerDialog">
-                <div class="fireworks">
-                    <span v-for="index in 18" :key="index" class="spark" :style="{ '--i': index }"></span>
-                </div>
                 <div class="winner-dialog">
                     <p class="winner-kicker">恭喜中奖</p>
                     <h2>{{ selectedWinner }}</h2>
@@ -534,32 +578,6 @@ watch(wheelSettings, (newValue) => {
     transform: translateY(-1px);
 }
 
-.fireworks {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.spark {
-    --x: calc(((var(--i) * 47) % 100) * 1%);
-    --y: calc((18 + ((var(--i) * 31) % 54)) * 1%);
-    --angle: calc(var(--i) * 20deg);
-    --distance: calc(42px + ((var(--i) % 5) * 14px));
-    --delay: calc((var(--i) % 6) * 0.08s);
-    position: absolute;
-    left: var(--x);
-    top: var(--y);
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: hsl(calc(var(--i) * 36), 82%, 58%);
-    box-shadow:
-        0 0 0 4px rgba(255, 255, 255, 0.18),
-        0 0 18px currentColor;
-    animation: spark-burst 1.05s ease-out var(--delay) both;
-}
-
 .winner-fade-enter-active,
 .winner-fade-leave-active {
     transition: opacity 0.22s ease;
@@ -579,22 +597,6 @@ watch(wheelSettings, (newValue) => {
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes spark-burst {
-    0% {
-        opacity: 0;
-        transform: rotate(var(--angle)) translateX(0) scale(0.4);
-    }
-
-    20% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0;
-        transform: rotate(var(--angle)) translateX(var(--distance)) scale(0.95);
     }
 }
 
